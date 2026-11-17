@@ -1,12 +1,12 @@
 /* ================= СЕТЬ: децентрализованные реле (Trystero / Nostr) =================
    Лобби открывается сразу, подключение идёт в фоне.
-   Три запасных CDN и таймауты: интерфейс больше не может зависнуть. */
+   Три запасных CDN и таймауты: интерфейс не может зависнуть. */
 
 let room = null, sendMsg = null, netStatus = 'offline';
 let isHost = false, code = '', hostPeerId = null, gotWelcome = false, joinName = '';
 let view = null, myId = null, localDone = false, lastChatTs = 0;
 const notes = [];
-let H = null; // состояние хоста
+let H = null;
 
 const APP_ID = 'mafia_city_v2';
 const CDN_SOURCES = [
@@ -16,7 +16,6 @@ const CDN_SOURCES = [
 ];
 const HOST_MSGS = new Set(['welcome', 'view', 'log', 'chat', 'check', 'ack', 'join_error']);
 
-/* ---- загрузка библиотеки с таймаутом и зеркалами ---- */
 function importWithTimeout(url, ms) {
   return Promise.race([
     import(url),
@@ -27,13 +26,12 @@ function importWithTimeout(url, ms) {
 async function loadTrystero() {
   let lastErr = null;
   for (const url of CDN_SOURCES) {
-    try { return await importWithTimeout(url, 7000); }
+    try { return await importWithTimeout(url, 8000); }
     catch (e) { lastErr = e; console.warn('CDN недоступен:', url); }
   }
   throw lastErr || new Error('all cdn failed');
 }
 
-/* ---- индикатор статуса связи в лобби ---- */
 function setNetStatus(s) {
   netStatus = s;
   const el = $('#lob-net'), btn = $('#btn-net-retry');
@@ -43,9 +41,9 @@ function setNetStatus(s) {
   else { el.textContent = 'Не удалось подключиться к реле. Проверьте сеть и повторите.'; el.className = 'hint err'; btn.hidden = false; }
 }
 
-/* ---- подключение к комнате реле ---- */
 function initRoom() {
   return loadTrystero().then(T => {
+    if (room) { try { room.leave(); } catch (e) {} }
     room = T.joinRoom({ appId: APP_ID }, 'room-' + code);
     const pair = room.makeAction('msg');
     sendMsg = pair[0];
@@ -76,7 +74,6 @@ function sendRaw(peerId, m) {
   try { sendMsg(m, peerId); } catch (e) {}
 }
 
-/* ---- старт: лобби открывается СРАЗУ, сеть подключается в фоне ---- */
 function createRoom(name) {
   isHost = true;
   code = genCode();
@@ -108,7 +105,6 @@ function connectNet() {
     });
 }
 
-/* ---- поиск хоста с повторами ---- */
 let helloTimer = null, failTimer = null;
 
 function stopHello() {
@@ -120,7 +116,7 @@ function startHello() {
   stopHello();
   let tries = 0;
   helloTimer = setInterval(() => {
-    if (gotWelcome || tries++ > 10) { stopHello(); return; }
+    if (gotWelcome || tries++ > 14) { stopHello(); return; }
     if (sendMsg) sendMsg({ t: 'hello', name: joinName });
   }, 1200);
   failTimer = setTimeout(() => {
@@ -132,7 +128,6 @@ function startHello() {
   }, 25000);
 }
 
-/* ---- исходящее действие игрока ---- */
 function act(o) {
   if (isHost) {
     const p = meH();
@@ -142,6 +137,5 @@ function act(o) {
   }
 }
 
-/* ---- кнопка повтора подключения ---- */
 const netRetryBtn = $('#btn-net-retry');
 if (netRetryBtn) netRetryBtn.onclick = () => connectNet();

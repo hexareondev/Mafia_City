@@ -6,7 +6,9 @@ setInterval(() => {
     el.textContent = fmt(s);
     el.classList.toggle('low', s <= 10 && s > 0);
     el.style.visibility = 'visible';
-  } else el.style.visibility = 'hidden';
+  } else {
+    el.style.visibility = 'hidden';
+  }
 }, 250);
 
 // ================= ОБРАБОТЧИКИ ИНТЕРФЕЙСА =================
@@ -20,9 +22,10 @@ $('#btn-create').onclick = () => {
 };
 
 $('#btn-join').onclick = () => {
-  const n = cleanName($('#home-name').value), c = cleanName($('#home-code').value).toUpperCase();
-  if (!n) { toast('Введите имя', true); return; }
-  if (c.length !== 4) { toast('Код — 4 символа', true); return; }
+  const n = cleanName($('#home-name').value);
+  const c = cleanName($('#home-code').value).toUpperCase();
+  if (!n) { toast('Введите имя', true); $('#home-name').focus(); return; }
+  if (c.length !== 4) { toast('Код — 4 символа', true); $('#home-code').focus(); return; }
   localStorage.setItem('mafia-name', n);
   $('#btn-create').disabled = true;
   $('#btn-join').disabled = true;
@@ -30,33 +33,30 @@ $('#btn-join').onclick = () => {
 };
 
 $('#home-code').addEventListener('input', e => e.target.value = e.target.value.toUpperCase());
+$('#home-code').addEventListener('keydown', e => { if (e.key === 'Enter') $('#btn-join').click(); });
+$('#home-name').addEventListener('keydown', e => { if (e.key === 'Enter') $('#btn-create').click(); });
 
 $('#btn-start').onclick = () => { if (isHost) startGame(); };
-
 $$('#lob-settings input,#lob-settings select').forEach(el => el.addEventListener('change', syncSettings));
-
 $('#btn-again').onclick = () => { if (isHost) startGame(); };
-
 $('#btn-tolobby').onclick = () => { if (isHost) toLobby(); };
-
 $('#btn-ready').onclick = () => act({ t: 'ready' });
 
 $('#rcard').onclick = () => {
-  $('#rcard').classList.toggle('flip');
-  if ($('#rcard').classList.contains('flip')) {
-    $('#btn-ready').disabled = view.you && view.you.ready ? true : false;
+  const card = $('#rcard');
+  card.classList.toggle('flip');
+  if (card.classList.contains('flip')) {
+    $('#btn-ready').disabled = !!(view && view.you && view.you.ready);
     beep(660, .12, 'sine', .03);
   }
 };
 
 $('#btn-copy-code').onclick = () => copyText(code, 'Код');
-
 $('#btn-copy-link').onclick = () => copyText(location.origin + location.pathname + '?room=' + code, 'Ссылка-приглашение');
-
 $('#hud-code').onclick = () => view && copyText(view.code, 'Код');
 
 $('#btn-leave').onclick = $('#btn-leave-lobby').onclick = () => {
-  if (confirm('Покинуть игру?')) location.reload();
+  if (confirm('Покинуть игру?')) location.href = location.pathname;
 };
 
 $('#chat-form').addEventListener('submit', e => {
@@ -104,9 +104,9 @@ $('#night-zone').addEventListener('click', e => {
 (function init() {
   const saved = localStorage.getItem('mafia-name');
   if (saved) $('#home-name').value = saved;
-  const room = new URLSearchParams(location.search).get('room');
-  if (room) {
-    $('#home-code').value = room.toUpperCase().slice(0, 4);
+  const roomParam = new URLSearchParams(location.search).get('room');
+  if (roomParam) {
+    $('#home-code').value = roomParam.toUpperCase().slice(0, 4);
     $('#home-name').focus();
   }
   document.body.dataset.phase = 'home';

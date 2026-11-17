@@ -11,6 +11,7 @@ function newHostState() {
     deadline: 0,
     timer: null,
     votes: {},
+    voteResolved: false,
     lastHeal: null
   };
 }
@@ -49,17 +50,18 @@ function logLine(text) {
 }
 
 // ================= ПОДКЛЮЧЕНИЕ ИГРОКОВ =================
-unction hostJoin(peerId, name) {
+function hostJoin(peerId, name) {
   name = cleanName(name);
   if (!name) return sendRaw(peerId, { t: 'join_error', msg: 'Пустое имя' });
   if (H.phase !== 'lobby') return sendRaw(peerId, { t: 'join_error', msg: 'Игра уже началась — дождитесь конца партии' });
+  if (H.players.some(q => q.conn === peerId)) return;
   if (H.players.length >= MAX_PLAYERS) return sendRaw(peerId, { t: 'join_error', msg: 'Комната заполнена (' + MAX_PLAYERS + ')' });
 
   const p = {
     id: 'p' + (H.seq++),
     conn: peerId,
     name: name,
-    color: PALETTE[(H.players.length) % PALETTE.length],
+    color: PALETTE[H.players.length % PALETTE.length],
     alive: true,
     host: false,
     role: 'civilian',
@@ -75,7 +77,7 @@ function hostLeave(c) {
   if (!H) return;
   const p = H.players.find(q => q.conn === c);
   if (!p) return;
-  
+
   if (H.phase === 'lobby' || H.phase === 'reveal') {
     H.players = H.players.filter(q => q !== p);
     if (H.phase === 'reveal') {
@@ -86,7 +88,7 @@ function hostLeave(c) {
     pushAll();
     return;
   }
-  
+
   p.conn = null;
   p.alive = false;
   p.gone = true;
@@ -94,7 +96,7 @@ function hostLeave(c) {
   if (checkWin()) return;
   pushAll();
   if (H.phase === 'night') tryEarlyNight();
-  if (H.phase === 'voting' && alive().every(q => H.votes[q.id] != null)) {
+  if (H.phase === 'voting' && !H.voteResolved && alive().every(q => H.votes[q.id] != null)) {
     clearTimeout(H.timer);
     resolveVote();
   }
@@ -110,6 +112,7 @@ function startGame() {
   H.started = true;
   H.winner = null;
   H.votes = {};
+  H.voteResolved = false;
   H.lastHeal = null;
   H.players.forEach(p => {
     p.ready = false;
@@ -136,7 +139,7 @@ function assignRoles() {
     p.role = i < mCount ? (i === 0 ? 'don' : 'mafia') : 'civilian';
   });
   let extra = mCount;
-  if (H.settings.sheriff) pool[extra++].role = 'sheriff';
+  if (H.settings.sheriff && extra < pool.length) pool[extra++].role = 'sheriff';
   if (H.settings.doctor && extra < pool.length) pool[extra++].role = 'doctor';
 }
 
@@ -146,6 +149,7 @@ function goNight() {
   H.round++;
   H.phase = 'night';
   H.votes = {};
+  H.voteResolved = false;
   H.players.forEach(p => {
     p.action = null;
     p.killDone = H.round === 1;
@@ -215,6 +219,7 @@ function goVote() {
   clearTimeout(H.timer);
   H.phase = 'voting';
   H.votes = {};
+  H.voteResolved = false;
   H.deadline = Date.now() + H.settings.vote * 1000;
   logLine('Голосование: кто покинет город?');
   pushAll();
@@ -222,7 +227,7 @@ function goVote() {
 }
 
 function hostVote(p, target) {
-  if (H.phase !== 'voting' || !p.alive || H.votes[p.id] != null) return;
+  if (H.phase !== 'voting' || H.voteResolved || !p.alive || H.votes[p.id] != null) return;
   if (target !== 'none') {
     const t = byId(target);
     if (!t || !t.alive || t.id === p.id) return;
@@ -236,7 +241,8 @@ function hostVote(p, target) {
 }
 
 function resolveVote() {
-  if (H.phase !== 'voting') return;
+  if (H.phase !== 'voting' || H.voteResolved) return;
+  H.voteResolved = true;
   clearTimeout(H.timer);
   const cnt = {};
   Object.values(H.votes).forEach(t => {
@@ -256,6 +262,7 @@ function resolveVote() {
   } else {
     logLine('Голоса разделились. Сегодня никто не изгнан.');
   }
+  pushAll();
   if (checkWin()) return;
   setTimeout(() => {
     if (H.phase === 'voting') goNight();
@@ -266,7 +273,7 @@ function resolveVote() {
 function hostAction(p, d) {
   if (H.phase !== 'night' || !p.alive) return;
   const r = p.role, t = byId(d.target);
-  
+
   if (d.kind === 'kill' && (r === 'mafia' || r === 'don')) {
     if (!t || !t.alive || t.role === 'mafia' || t.role === 'don' || p.killDone) return;
     p.action = t.id;
@@ -291,7 +298,9 @@ function hostAction(p, d) {
     sendP(p, { t: 'check', don: true, name: t.name, isSheriff: t.role === 'sheriff' });
     tryEarlyNight();
   } else if (d.kind === 'donskip' && r === 'don') {
+    if (p.donCheckDone) return;
     p.donCheckDone = true;
+    sendP(p, { t: 'ack' });
     tryEarlyNight();
   }
 }
@@ -321,9 +330,12 @@ function toLobby() {
   H.round = 0;
   H.deadline = 0;
   H.votes = {};
+  H.voteResolved = false;
+  H.players = H.players.filter(p => p.host || p.conn);
   H.players.forEach(p => {
     p.alive = true;
     p.gone = false;
+    p.ready = false;
     p.role = 'civilian';
   });
   pushAll();
@@ -342,6 +354,7 @@ function hostChat(p, text) {
 
 // ================= РОУТЕР КОМАНД =================
 function hostCmd(p, d) {
+  if (!p || !d) return;
   switch (d.t) {
     case 'chat': hostChat(p, d.text); break;
     case 'vote': hostVote(p, d.target); break;
@@ -391,7 +404,9 @@ function viewFor(p) {
       role: p.role,
       alive: p.alive,
       ready: p.ready,
-      team: (p.role === 'mafia' || p.role === 'don') ? H.players.filter(q => q.role === 'mafia' || q.role === 'don').map(q => ({ id: q.id, name: q.name })) : null,
+      team: (p.role === 'mafia' || p.role === 'don')
+        ? H.players.filter(q => q.role === 'mafia' || q.role === 'don').map(q => ({ id: q.id, name: q.name }))
+        : null,
       acted: actedOf(p),
       donCheckDone: !!p.donCheckDone,
       healLock: H.lastHeal

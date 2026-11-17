@@ -20,12 +20,6 @@ function genCode() {
   return Array.from({ length: 4 }, () => CODE_CH[Math.random() * CODE_CH.length | 0]).join('');
 }
 
-function genPeerId(code) {
-  // Уникальный ID пира с временной меткой для избежания конфликтов
-  const timestamp = Date.now().toString(36);
-  return `${PEER_PREFIX}${code}-${timestamp}`;
-}
-
 function roleName(r) {
   return ROLES[r] ? ROLES[r].name : '?';
 }
