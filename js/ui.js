@@ -5,7 +5,9 @@ function showScreen(id) {
 }
 
 function busy(t) {
-  $('#home-busy').textContent = t || '';
+  const el = $('#home-busy');
+  el.textContent = t || '';
+  el.classList.toggle('waiting', !!t);
 }
 
 // ================= УВЕДОМЛЕНИЯ =================

@@ -3,10 +3,10 @@ function ingest(d) {
   if (!d) return;
   switch (d.t) {
     case 'welcome': myId = d.id; break;
-    case 'join_error':
+	case 'join_error':
       busy('');
       toast(d.msg, true);
-      try { peer && peer.destroy(); } catch (e) {}
+      try { room && room.leave(); } catch (e) {}
       break;
     case 'view':
       const prev = view ? view.phase + ':' + view.round : '';

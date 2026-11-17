@@ -267,3 +267,9 @@ input[type=checkbox]{accent-color:var(--gold);width:18px;height:18px}
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}
 }
+.busy.waiting::after{content:'';animation:dots 1.2s steps(4,end) infinite}
+.hint.wait::after{content:'';animation:dots 1.2s steps(4,end) infinite}
+@keyframes dots{0%{content:''}25%{content:'.'}50%{content:'..'}75%{content:'...'}}
+.hint.ok{color:var(--green)}
+.hint.err{color:var(--red2)}
+.hint.wait{color:var(--gold)}
