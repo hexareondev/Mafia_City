@@ -1,146 +1,107 @@
-// ================= СОСТОЯНИЕ =================
-let peer = null, conn = null, isHost = false, code = '';
+/* ================= СЕТЬ: децентрализованные реле (Trystero / Nostr) =================
+   Вместо одного сервера используется сеть публичных Nostr-реле.
+   Единой точки отказа нет: если реле недоступно, подключение идёт через другое. */
+
+let room = null, sendMsg = null;
+let isHost = false, code = '', hostPeerId = null, gotWelcome = false;
 let view = null, myId = null, localDone = false, lastChatTs = 0;
 const notes = [];
 let H = null; // состояние хоста
 
-// ================= P2P ПОДКЛЮЧЕНИЕ =================
+const APP_ID = 'mafia_city_v2';
+const TRYSTERO_URL = 'https://esm.sh/trystero/nostr';
+const HOST_MSGS = new Set(['welcome', 'view', 'log', 'chat', 'check', 'ack', 'join_error']);
+
+function loadTrystero() {
+  return import(TRYSTERO_URL);
+}
+
+function initRoom() {
+  return loadTrystero().then(T => {
+    room = T.joinRoom({ appId: APP_ID }, 'room-' + code);
+    const pair = room.makeAction('msg');
+    sendMsg = pair[0];
+    pair[1]((data, peerId) => {
+      if (isHost) {
+        if (!data) return;
+        if (data.t === 'hello') { hostJoin(peerId, data.name); return; }
+        const p = H.players.find(q => q.conn === peerId);
+        if (p) hostCmd(p, data);
+      } else {
+        if (data && HOST_MSGS.has(data.t)) hostPeerId = peerId;
+        if (data && data.t === 'welcome') { gotWelcome = true; busy(''); stopHello(); }
+        ingest(data);
+      }
+    });
+    room.onPeerLeave(peerId => {
+      if (isHost) hostLeave(peerId);
+      else if (peerId === hostPeerId) showErr('Хост отключился. Комната закрыта.');
+    });
+  });
+}
+
+function sendRaw(peerId, m) {
+  if (!sendMsg || !peerId) return;
+  try { sendMsg(m, peerId); } catch (e) {}
+}
+
+/* ---- создание комнаты (хост) ---- */
 function createRoom(name) {
   isHost = true;
   code = genCode();
   H = newHostState();
   addHostPlayer(name);
   busy('Создаём комнату…');
-  bootPeer();
+  initRoom()
+    .then(() => { busy(''); showScreen('scr-lobby'); pushAll(); })
+    .catch(e => {
+      console.error(e);
+      showErr('Не удалось загрузить сетевой модуль. Проверьте интернет и обновите страницу.');
+    });
 }
 
-function bootPeer() {
-  const peerId = genPeerId(code);
-  console.log('Создаём хост с ID:', peerId);
-  
-  peer = new Peer(peerId, {
-    debug: 1, // Включить логирование
-    config: {
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' }
-      ]
-    }
-  });
-  
-  peer.on('open', (id) => {
-    console.log('Хост открыт:', id);
-    busy('');
-    showScreen('scr-lobby');
-    pushAll();
-  });
-  
-  peer.on('connection', c => {
-    console.log('Новое подключение:', c.peer);
-    c.on('data', d => {
-      if (!H) return;
-      if (d && d.t === 'join') {
-        hostJoin(c, d.name);
-        return;
-      }
-      const p = H.players.find(q => q.conn === c);
-      if (p) hostCmd(p, d || {});
-    });
-    c.on('close', () => hostLeave(c));
-    c.on('error', (err) => console.error('Ошибка соединения:', err));
-  });
-  
-  peer.on('error', e => {
-    console.error('Ошибка Peer:', e.type, e);
-    if (e.type === 'unavailable-id') {
-      // ID занят — пробуем другой код
-      peer.destroy();
-      code = genCode();
-      setTimeout(bootPeer, 150);
-    } else if (e.type === 'network' || e.type === 'server-error') {
-      showErr('Ошибка сети. Проверьте подключение к интернету.');
-    } else if (e.type === 'socket-error' || e.type === 'socket-closed') {
-      showErr('Не удалось подключиться к серверу. Попробуйте позже.');
-    } else {
-      showErr('Ошибка сети (' + e.type + '). Попробуйте ещё раз.');
-    }
-  });
+/* ---- вход в комнату (клиент) ---- */
+let helloTimer = null, failTimer = null;
+
+function stopHello() {
+  if (helloTimer) { clearInterval(helloTimer); helloTimer = null; }
+  if (failTimer) { clearTimeout(failTimer); failTimer = null; }
 }
 
 function joinRoom(c, name) {
+  isHost = false;
   code = c.toUpperCase();
+  gotWelcome = false;
+  hostPeerId = null;
   busy('Подключаемся к комнате ' + code + '…');
-  
-  // Пробуем разные ID хоста
-  const tryConnect = (attempt = 0) => {
-    console.log('Попытка подключения #' + (attempt + 1) + ' к коду:', code);
-    
-    peer = new Peer({
-      debug: 1,
-      config: {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun2.l.google.com:19302' }
-        ]
-      }
-    });
-    
-    peer.on('open', () => {
-      // Пробуем подключиться к хосту
-      const hostId = `${PEER_PREFIX}${code}`;
-      console.log('Подключаемся к хосту:', hostId);
-      
-      conn = peer.connect(hostId, { reliable: true });
-      
-      conn.on('open', () => {
-        console.log('Подключение установлено');
-        conn.send({ t: 'join', name });
-      });
-      
-      conn.on('data', d => ingest(d));
-      
-      conn.on('close', () => {
-        console.log('Соединение закрыто');
-        showErr('Хост отключился. Комната закрыта.');
-      });
-      
-      conn.on('error', (err) => {
-        console.error('Ошибка соединения:', err);
-        showErr('Ошибка соединения с хостом.');
-      });
-    });
-    
-    peer.on('error', e => {
-      console.error('Ошибка подключения:', e.type, e);
-      busy('');
-      
-      if (e.type === 'peer-unavailable') {
-        if (attempt < 2) {
-          // Повторная попытка через 2 секунды
-          toast('Повторная попытка подключения...', false);
-          setTimeout(() => tryConnect(attempt + 1), 2000);
-        } else {
-          toast('Комната ' + code + ' не найдена. Проверьте код.', true);
+  initRoom()
+    .then(() => {
+      let tries = 0;
+      // повторяем «привет» несколько раз, пока хост не ответит
+      helloTimer = setInterval(() => {
+        if (tries++ > 8) { stopHello(); return; }
+        if (sendMsg) sendMsg({ t: 'hello', name: name });
+      }, 1200);
+      failTimer = setTimeout(() => {
+        if (!gotWelcome) {
+          stopHello();
+          showErr('Комната ' + code + ' не найдена. Проверьте код и убедитесь, что создатель игры онлайн.');
+          try { room && room.leave(); } catch (e) {}
         }
-      } else if (e.type === 'network') {
-        showErr('Ошибка сети. Проверьте подключение к интернету.');
-      } else {
-        showErr('Ошибка сети (' + e.type + ').');
-      }
+      }, 12000);
+    })
+    .catch(e => {
+      console.error(e);
+      showErr('Не удалось загрузить сетевой модуль. Проверьте интернет и обновите страницу.');
     });
-  };
-  
-  tryConnect();
 }
 
-// Отправка действия (хост вызывает обработчики сам)
+/* ---- исходящее действие игрока ---- */
 function act(o) {
   if (isHost) {
     const p = meH();
     if (p) hostCmd(p, o);
-  } else if (conn) {
-    conn.send(o);
+  } else if (hostPeerId) {
+    sendRaw(hostPeerId, o);
   }
 }

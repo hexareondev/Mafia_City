@@ -35,11 +35,8 @@ const aliveMafia = () => alive().filter(p => p.role === 'mafia' || p.role === 'd
 
 function sendP(p, m) {
   if (!m) return;
-  if (p.conn) {
-    try { p.conn.send(m); } catch (e) {}
-  } else {
-    ingest(m);
-  }
+  if (p.conn) sendRaw(p.conn, m);
+  else ingest(m);
 }
 
 function pushAll() {
@@ -52,15 +49,15 @@ function logLine(text) {
 }
 
 // ================= ПОДКЛЮЧЕНИЕ ИГРОКОВ =================
-function hostJoin(c, name) {
+unction hostJoin(peerId, name) {
   name = cleanName(name);
-  if (!name) return c.send({ t: 'join_error', msg: 'Пустое имя' });
-  if (H.phase !== 'lobby') return c.send({ t: 'join_error', msg: 'Игра уже началась — дождитесь конца партии' });
-  if (H.players.length >= MAX_PLAYERS) return c.send({ t: 'join_error', msg: 'Комната заполнена (' + MAX_PLAYERS + ')' });
-  
+  if (!name) return sendRaw(peerId, { t: 'join_error', msg: 'Пустое имя' });
+  if (H.phase !== 'lobby') return sendRaw(peerId, { t: 'join_error', msg: 'Игра уже началась — дождитесь конца партии' });
+  if (H.players.length >= MAX_PLAYERS) return sendRaw(peerId, { t: 'join_error', msg: 'Комната заполнена (' + MAX_PLAYERS + ')' });
+
   const p = {
     id: 'p' + (H.seq++),
-    conn: c,
+    conn: peerId,
     name: name,
     color: PALETTE[(H.players.length) % PALETTE.length],
     alive: true,
@@ -69,7 +66,7 @@ function hostJoin(c, name) {
     ready: false
   };
   H.players.push(p);
-  c.send({ t: 'welcome', id: p.id });
+  sendRaw(peerId, { t: 'welcome', id: p.id });
   logLine(name + ' входит в город.');
   pushAll();
 }
