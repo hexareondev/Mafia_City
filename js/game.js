@@ -44,8 +44,8 @@ function pushAll() {
   H.players.forEach(p => sendP(p, viewFor(p)));
 }
 
-function logLine(text) {
-  const m = { t: 'log', text };
+function logLine(text, kind) {
+  const m = { t: 'log', text, kind: kind || null };
   H.players.forEach(p => sendP(p, m));
 }
 
@@ -92,7 +92,7 @@ function hostLeave(c) {
   p.conn = null;
   p.alive = false;
   p.gone = true;
-  logLine(p.name + ' покинул игру.');
+  logLine(p.name + ' покинул игру.', 'death');
   if (checkWin()) return;
   pushAll();
   if (H.phase === 'night') tryEarlyNight();
@@ -195,9 +195,9 @@ function resolveNight() {
   if (victimId && victimId !== healed) {
     const v = byId(victimId);
     v.alive = false;
-    logLine('Этой ночью был убит ' + v.name + '.' + (H.settings.reveal ? ' ' + v.name + ' — ' + roleName(v.role).toLowerCase() + '.' : ''));
+    logLine('Этой ночью был убит ' + v.name + '.' + (H.settings.reveal ? ' ' + v.name + ' — ' + roleName(v.role).toLowerCase() + '.' : ''), 'death');
   } else {
-    logLine(victimId ? 'Этой ночью никто не пострадал.' : 'Этой ночью выстрелов не было.');
+    logLine(victimId ? 'Этой ночью никто не пострадал. Доктор успел вовремя.' : 'Этой ночью выстрелов не было.', healed ? 'heal' : null);
   }
   H.lastHeal = healed || null;
   if (checkWin()) return;
@@ -258,7 +258,7 @@ function resolveVote() {
   if (out) {
     const v = byId(out);
     v.alive = false;
-    logLine('Город решил: ' + v.name + ' покидает игру.' + (H.settings.reveal ? ' ' + v.name + ' — ' + roleName(v.role).toLowerCase() + '.' : ''));
+    logLine('Город решил: ' + v.name + ' покидает игру.' + (H.settings.reveal ? ' ' + v.name + ' — ' + roleName(v.role).toLowerCase() + '.' : ''), 'death');
   } else {
     logLine('Голоса разделились. Сегодня никто не изгнан.');
   }
@@ -296,6 +296,7 @@ function hostAction(p, d) {
     if (!t || !t.alive || t.id === p.id || p.donCheckDone) return;
     p.donCheckDone = true;
     sendP(p, { t: 'check', don: true, name: t.name, isSheriff: t.role === 'sheriff' });
+    sendP(p, { t: 'ack' });
     tryEarlyNight();
   } else if (d.kind === 'donskip' && r === 'don') {
     if (p.donCheckDone) return;

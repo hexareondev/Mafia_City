@@ -4,11 +4,7 @@ const $$ = s => [...document.querySelectorAll(s)];
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, c => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;'
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   }[c]));
 }
 
@@ -37,18 +33,52 @@ function fmt(s) {
 }
 
 // ================= ЗВУК =================
-let AC = null;
+const Sound = {
+  on: localStorage.getItem('mafia-sound') !== '0',
+  ctx: null,
+  ready() {
+    if (!this.on) return null;
+    try {
+      if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      if (this.ctx.state === 'suspended') this.ctx.resume();
+      return this.ctx;
+    } catch (e) { return null; }
+  }
+};
+
 function beep(f = 440, d = .18, type = 'sine', g = .05) {
+  const ctx = Sound.ready();
+  if (!ctx) return;
   try {
-    AC = AC || new (window.AudioContext || window.webkitAudioContext)();
-    const o = AC.createOscillator(), v = AC.createGain();
+    const o = ctx.createOscillator(), v = ctx.createGain();
     o.type = type;
     o.frequency.value = f;
     v.gain.value = g;
     o.connect(v);
-    v.connect(AC.destination);
+    v.connect(ctx.destination);
     o.start();
-    v.gain.exponentialRampToValueAtTime(.0001, AC.currentTime + d);
-    o.stop(AC.currentTime + d);
+    v.gain.exponentialRampToValueAtTime(.0001, ctx.currentTime + d);
+    o.stop(ctx.currentTime + d);
   } catch (e) {}
 }
+
+function paintSound() {
+  const b = $('#sound-btn');
+  if (!b) return;
+  b.textContent = Sound.on ? '🔊 Звук' : '🔇 Тихо';
+  b.classList.toggle('off', !Sound.on);
+  b.title = Sound.on ? 'Звук включён — нажмите, чтобы выключить' : 'Звук выключен — нажмите, чтобы включить';
+}
+
+const soundBtn = $('#sound-btn');
+if (soundBtn) {
+  soundBtn.onclick = () => {
+    Sound.on = !Sound.on;
+    localStorage.setItem('mafia-sound', Sound.on ? '1' : '0');
+    paintSound();
+    if (Sound.on) beep(660, .12, 'sine', .04);
+  };
+}
+paintSound();
+
+document.addEventListener('pointerdown', () => { Sound.ready(); }, { once: true });

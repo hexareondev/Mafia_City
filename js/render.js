@@ -14,26 +14,41 @@ function ingest(d) {
       const prev = view ? view.phase + ':' + view.round : '';
       view = d;
       localDone = false;
-      fx(prev);
+      phaseFx(prev);
       render();
       break;
     }
     case 'chat':
       addChat(d);
+      beep(880, .05, 'sine', .02);
       break;
     case 'log':
       addLog(d.text);
+      if (d.kind === 'death') {
+        FX.burst('blood');
+        hitFlash();
+        shakeScreen();
+        beep(70, .5, 'sine', .07);
+        setTimeout(() => beep(48, .6, 'sine', .05), 90);
+      } else if (d.kind === 'heal') {
+        FX.burst('heal');
+        beep(520, .18, 'sine', .04);
+      }
       break;
     case 'ack':
       localDone = true;
       if (view && view.you) view.you.acted = true;
+      beep(660, .1, 'triangle', .035);
       render();
       break;
     case 'check': {
       const msg = d.don
         ? (d.isSheriff ? d.name + ' — ШЕРИФ!' : d.name + ' — не шериф.')
         : (d.isMafia ? d.name + ' — МАФИЯ!' : d.name + ' — мирный житель.');
-      toast((d.don ? '🎩 ' : '⭐ ') + msg, d.don ? d.isSheriff : d.isMafia);
+      const alarm = d.don ? d.isSheriff : d.isMafia;
+      toast((d.don ? '🎩 ' : '⭐ ') + msg, alarm);
+      FX.burst(alarm ? 'blood' : 'ice');
+      beep(alarm ? 180 : 720, .22, alarm ? 'square' : 'sine', .04);
       notes.push(msg);
       renderNotes();
       break;
@@ -41,25 +56,30 @@ function ingest(d) {
   }
 }
 
-function fx(prev) {
+function phaseFx(prev) {
   if (!view || !view.started) return;
   const key = view.phase + ':' + view.round;
   if (prev === key) return;
   if (view.phase === 'night') {
     banner('НОЧЬ ' + view.round, '#9db4ff');
+    FX.burst('ice');
     beep(98, .7, 'sine', .06);
   } else if (view.phase === 'day') {
     banner('ДЕНЬ ' + view.round, 'var(--gold2)');
+    FX.burst('gold');
     beep(392, .16);
     setTimeout(() => beep(523, .2), 140);
   } else if (view.phase === 'voting') {
     banner('ГОЛОСОВАНИЕ', 'var(--red2)');
+    shakeScreen();
     beep(220, .3, 'square', .03);
   } else if (view.phase === 'over') {
-    banner(view.winner === 'mafia' ? 'МАФИЯ ПОБЕДИЛА' : 'ГОРОД ПОБЕДИЛ', view.winner === 'mafia' ? 'var(--red2)' : 'var(--gold2)');
+    const mafia = view.winner === 'mafia';
+    banner(mafia ? 'МАФИЯ ПОБЕДИЛА' : 'ГОРОД ПОБЕДИЛ', mafia ? 'var(--red2)' : 'var(--gold2)');
+    FX.burst(mafia ? 'blood' : 'gold', 160);
     beep(262, .2);
     setTimeout(() => beep(330, .2), 180);
-    setTimeout(() => beep(392, .3), 360);
+    setTimeout(() => beep(392, .35), 360);
   }
 }
 
@@ -128,11 +148,13 @@ function renderLobby() {
   fillSelect($('#set-discuss'), DISCUSS_OPTIONS, s.discuss);
   fillSelect($('#set-vote'), VOTE_OPTIONS, s.vote);
   fillSelect($('#set-night'), NIGHT_OPTIONS, s.night);
+
+  const ready = netStatus === 'online';
   $('#btn-start').hidden = !host;
-  $('#btn-start').disabled = !view.canStart || netStatus !== 'online';
+  $('#btn-start').disabled = !view.canStart || !ready;
   const n = view.players.length;
   $('#lob-hint').textContent = !host ? 'Игру начнёт хост, когда все соберутся.'
-    : netStatus !== 'online' ? 'Дождитесь подключения к базе — кнопка станет активной.'
+    : !ready ? 'Дождитесь подключения к базе — кнопка станет активной.'
     : n < MIN_PLAYERS ? 'Нужно минимум ' + MIN_PLAYERS + ' игрока. Отправьте друзьям код или ссылку.'
     : n < 6 ? 'Можно начинать, но классическая партия — от 6 игроков.'
     : 'Город готов. Начинаем?';
@@ -219,7 +241,8 @@ function chipsHTML(list) {
 }
 
 function renderNight() {
-  const y = view.you, key = view.round + ':' + y.acted + ':' + y.donCheckDone + ':' + localDone + ':' + y.alive;
+  const y = view.you;
+  const key = view.round + ':' + y.acted + ':' + y.donCheckDone + ':' + localDone + ':' + y.alive;
   if (nightKey === key) return;
   nightKey = key;
   const nz = $('#night-zone');
