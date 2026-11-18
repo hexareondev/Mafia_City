@@ -36,10 +36,12 @@ function ingest(d) {
       }
       break;
     case 'ack':
-      localDone = true;
-      if (view && view.you) view.you.acted = true;
-      beep(660, .1, 'triangle', .035);
-      render();
+      if (d.kind === 'doncheck' || d.kind === 'donskip') {
+        beep(520, .1, 'sine', .03);
+      } else {
+        localDone = true;
+        beep(660, .1, 'triangle', .035);
+      }
       break;
     case 'check': {
       const msg = d.don
@@ -90,7 +92,8 @@ function scrollFeed() { feed.scrollTop = feed.scrollHeight; }
 function addChat(m) {
   const d = document.createElement('div');
   d.className = 'msg' + (m.dead ? ' dead' : '');
-  d.innerHTML = '<span class="who" style="color:' + esc(m.color) + '">' + esc(m.name) + '</span>' + esc(m.text);
+  d.innerHTML = '<span class="who" style="color:' + esc(m.color) + '">' + esc(m.name) + '</span>' +
+    (m.bot ? '<span class="mini-bot">бот</span>' : '') + esc(m.text);
   feed.append(d);
   scrollFeed();
 }
@@ -138,7 +141,7 @@ function renderLobby() {
   $('#lob-players').innerHTML = view.players.map(p =>
     '<div class="prow"><div class="av" style="--c:' + p.color + '">' + esc(p.name[0].toUpperCase()) + '</div>' +
     '<span class="pname">' + esc(p.name) + (p.id === view.you.id ? ' <i>(вы)</i>' : '') + (p.host ? ' <b title="хост">♛</b>' : '') + '</span>' +
-    (p.host ? '<span class="tag">хост</span>' : '') + '</div>').join('');
+    (p.bot ? '<span class="tag bot">бот</span>' : (p.host ? '<span class="tag">хост</span>' : '')) + '</div>').join('');
 
   const s = view.settings, host = isHost;
   $$('#lob-settings input,#lob-settings select').forEach(el => el.disabled = !host);
@@ -149,14 +152,22 @@ function renderLobby() {
   fillSelect($('#set-vote'), VOTE_OPTIONS, s.vote);
   fillSelect($('#set-night'), NIGHT_OPTIONS, s.night);
 
+  const bots = view.botCount || 0;
+  $('#bot-row').hidden = !host;
+  $('#bot-num').textContent = bots;
+  $('#btn-bot-plus').disabled = !host || view.players.length >= MAX_PLAYERS;
+  $('#btn-bot-minus').disabled = !host || bots === 0;
+  $('#btn-bot-fill').disabled = !host || view.players.length >= BOT_FILL_TARGET;
+  $('#btn-bot-clear').disabled = !host || bots === 0;
+
   const ready = netStatus === 'online';
   $('#btn-start').hidden = !host;
   $('#btn-start').disabled = !view.canStart || !ready;
   const n = view.players.length;
   $('#lob-hint').textContent = !host ? 'Игру начнёт хост, когда все соберутся.'
     : !ready ? 'Дождитесь подключения к базе — кнопка станет активной.'
-    : n < MIN_PLAYERS ? 'Нужно минимум ' + MIN_PLAYERS + ' игрока. Отправьте друзьям код или ссылку.'
-    : n < 6 ? 'Можно начинать, но классическая партия — от 6 игроков.'
+    : n < MIN_PLAYERS ? 'Нужно минимум ' + MIN_PLAYERS + ' игрока. Позовите друзей или добавьте ботов.'
+    : n < 6 ? 'Начинать можно, но классическая партия — от 6 игроков.'
     : 'Город готов. Начинаем?';
 }
 
@@ -186,6 +197,7 @@ function renderReveal() {
   $('#btn-ready').textContent = y.ready ? 'Готово ✓' : 'Я готов';
   $('#btn-ready').disabled = y.ready || !$('#rcard').classList.contains('flip');
   $('#ready-count').textContent = 'Готовы ' + view.readyCount + ' из ' + view.readyTotal;
+  $('#btn-skip-reveal').hidden = !isHost;
 }
 
 // ================= ИГРОВОЙ ЭКРАН =================
@@ -202,6 +214,7 @@ function pcardHTML(q, i) {
     '" data-id="' + q.id + '" style="animation-delay:' + (i * 40) + 'ms">' +
     '<div class="av" style="--c:' + q.color + '">' + esc(q.name[0].toUpperCase()) + '</div>' +
     '<div class="pname">' + esc(q.name) + (me ? ' <i>(вы)</i>' : '') + (q.host ? ' <b>♛</b>' : '') + (q.gone ? ' <i>(вышел)</i>' : '') + '</div>' +
+    (q.bot ? '<span class="mini-bot">бот</span>' : '') +
     roleTag + pips + '</div>';
 }
 
@@ -211,16 +224,24 @@ function renderGame() {
   $('#hud-phase').textContent = v.phase === 'night' ? 'НОЧЬ ' + v.round : v.phase === 'voting' ? 'ДЕНЬ ' + v.round + ' · СУД' : 'ДЕНЬ ' + v.round;
   $('#hud-sub').textContent = v.phase === 'night' ? 'Ночью город молчит. Действуют особые роли.'
     : v.phase === 'voting' ? 'Выберите, кого изгнать, или проголосуйте против всех.'
-    : 'Обсуждайте в чате и ищите мафию. Голосование — по таймеру.';
+    : 'Обсуждайте в чате и ищите мафию. Названные имена боты запоминают.';
   $('#hud-code').textContent = '♠ ' + v.code;
   $('#hud-role').textContent = y.alive ? ROLES[y.role].icon + ' ' + ROLES[y.role].name : '👻 вы погибли';
   $('#hud-alive').textContent = v.players.filter(p => p.alive).length + ' в игре';
+
+  const skip = $('#btn-skip');
+  skip.hidden = !isHost;
+  skip.textContent = v.phase === 'night' ? '⏭ Завершить ночь'
+    : v.phase === 'day' ? '⏭ К голосованию'
+    : '⏭ Подвести итоги';
+
   const night = v.phase === 'night';
   $('#players-grid').hidden = night;
   $('#night-zone').hidden = !night;
   $('#vote-bar').hidden = v.phase !== 'voting';
   if (!night) $('#players-grid').innerHTML = v.players.map(pcardHTML).join('');
   else renderNight();
+
   if (v.phase === 'voting') {
     const mv = v.myVote;
     $('#my-vote').textContent = mv == null ? '' : mv === 'none' ? 'Ваш голос: против всех'
@@ -253,9 +274,11 @@ function renderNight() {
   if (y.role === 'civilian' || !y.alive) {
     html = '<div class="npanel"><div class="sleep"><div class="big">🌙</div><h3>' + (y.alive ? 'Вы спите' : 'Вы наблюдаете') + '</h3>' +
       '<p class="ntext">Город утопает в тумане. Кто-то крадётся по улицам…</p></div></div>';
+
   } else if (y.role === 'sheriff') {
     html = '<div class="npanel"><div class="nrole"><span class="ico">⭐</span><h3>Шериф ведёт проверку</h3></div>' +
       (y.acted ? doneBox : '<p class="ntext">Кого вы хотите проверить этой ночью?</p><div data-kind="check">' + chipsHTML(aliveP.filter(p => p.id !== y.id)) + '</div>') + '</div>';
+
   } else if (y.role === 'doctor') {
     const lock = view.players.find(p => p.id === y.healLock);
     const opts = aliveP.filter(p => p.id !== y.healLock);
@@ -263,24 +286,36 @@ function renderNight() {
       (y.acted ? doneBox : '<p class="ntext">Кого вы будете лечить? Можно выбрать себя.</p>' +
         (lock ? '<p class="hint" style="margin-bottom:8px">Нельзя лечить ' + esc(lock.name) + ' второй раз подряд.</p>' : '') +
         '<div data-kind="heal">' + chipsHTML(opts) + '</div>') + '</div>';
+
   } else {
     const team = y.team || [];
     const targets = aliveP.filter(p => !team.some(t => t.id === p.id));
     const teamHtml = '<div class="chips">' + team.map(t =>
       '<span class="chip static"><span class="dot" style="--c:' + ((view.players.find(p => p.id === t.id) || { color: '#888' }).color) + '"></span>' + esc(t.name) + '</span>'
     ).join('') + '</div>';
-    html = '<div class="npanel mafia"><div class="nrole"><span class="ico">' + (y.role === 'don' ? '🎩' : '🔪') + '</span><h3>' + (y.role === 'don' ? 'Дон мафии' : 'Мафия') + ' просыпается</h3></div>' +
+    const don = y.role === 'don';
+
+    html = '<div class="npanel mafia"><div class="nrole"><span class="ico">' + (don ? '🎩' : '🔪') + '</span><h3>' + (don ? 'Дон мафии' : 'Мафия') + ' просыпается</h3></div>' +
       '<p class="ntext">Ваша команда этой ночью:</p>' + teamHtml;
+
+    html += '<div class="nsection"><div class="nsec-head">🔪 Выстрел</div>';
     if (view.round === 1) {
       html += '<p class="ntext">Первая ночь — знакомство. Вы запоминаете друг друга. Убийства начнутся со следующей ночи.</p>';
     } else {
-      html += (y.acted || localDone) ? doneBox : '<p class="ntext">Кто не увидит рассвет?</p><div data-kind="kill">' + chipsHTML(targets) + '</div>';
+      html += (y.acted || localDone)
+        ? doneBox
+        : '<p class="ntext">Кто не увидит рассвет?</p><div data-kind="kill">' + chipsHTML(targets) + '</div>';
     }
-    if (y.role === 'don') {
-      html += '<div class="nsection"><p class="ntext"><b>Проверка дона:</b> кто из игроков — шериф?</p>' +
-        (y.donCheckDone ? '<div class="done">Проверка завершена.</div>'
-          : '<div data-kind="doncheck">' + chipsHTML(aliveP.filter(p => p.id !== y.id)) + '</div><button class="btn ghost sm" data-act="donskip">Не проверять</button>');
-      html += '</div>';
+    html += '</div>';
+
+    if (don) {
+      const checkTargets = aliveP.filter(p => p.id !== y.id && !team.some(t => t.id === p.id));
+      html += '<div class="nsection"><div class="nsec-head">🎩 Проверка дона</div>' +
+        '<p class="ntext">Отдельное действие: ищем шерифа. Выстрел от этого не меняется.</p>' +
+        (y.donCheckDone
+          ? '<div class="done">Проверка завершена.</div>'
+          : '<div data-kind="doncheck">' + chipsHTML(checkTargets) + '</div><button class="btn ghost sm" data-act="donskip">Не проверять этой ночью</button>') +
+        '</div>';
     }
     html += '</div>';
   }
@@ -298,7 +333,7 @@ function renderOver() {
     : 'Все члены мафии разоблачены. Улицы снова безопасны.';
   $('#over-list').innerHTML = view.players.map(p =>
     '<div class="orow"><div class="av" style="--c:' + p.color + '">' + esc(p.name[0].toUpperCase()) + '</div>' +
-    '<span class="pname">' + esc(p.name) + '</span>' +
+    '<span class="pname">' + esc(p.name) + (p.bot ? ' <i>(бот)</i>' : '') + '</span>' +
     '<span class="rtag ' + (p.role || 'civilian') + '">' + (ROLES[p.role] || ROLES.civilian).icon + ' ' + roleName(p.role || 'civilian') + '</span>' +
     '<span class="fate">' + (p.gone ? 'покинул игру' : p.alive ? 'выжил' : 'погиб') + '</span></div>').join('');
   const host = isHost;

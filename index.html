@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>МАФИЯ — онлайн-игра для компании</title>
-<meta name="description" content="Классическая Мафия для компании друзей: комната по коду, ночные роли, дневной суд.">
+<meta name="description" content="Классическая Мафия для компании друзей: комната по коду, ночные роли, дневной суд. Можно заполнить лобби ботами.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90' fill='%23d4a24e'>♠</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -61,7 +61,7 @@
         <button class="btn ghost" id="btn-join">Войти</button>
       </div>
       <div class="busy" id="home-busy"></div>
-      <p class="home-foot">Открытый проект · комната живёт, пока хост онлайн</p>
+      <p class="home-foot">Мало народу? Хост добавит ботов — они спорят, проверяют и голосуют сами.</p>
     </div>
   </div>
 </section>
@@ -98,6 +98,19 @@
         <div class="panel" style="margin-bottom:20px">
           <h3>Игроки</h3>
           <div id="lob-players"></div>
+          <div class="bot-row" id="bot-row" hidden>
+            <div class="bot-head">
+              <span>Боты в городе</span>
+              <span class="bot-num" id="bot-num">0</span>
+            </div>
+            <div class="bot-ctrl">
+              <button class="step-btn" id="btn-bot-minus" type="button" title="Убрать одного бота">−</button>
+              <button class="step-btn" id="btn-bot-plus" type="button" title="Добавить одного бота">+</button>
+              <button class="btn ghost sm" id="btn-bot-fill">Заполнить до 8</button>
+              <button class="btn ghost sm" id="btn-bot-clear">Убрать всех</button>
+            </div>
+            <p class="hint">Боты получают роли, действуют ночью, спорят днём и голосуют. Называйте имена в чате — они это запоминают.</p>
+          </div>
         </div>
         <div class="panel">
           <h3>Настройки партии</h3>
@@ -128,6 +141,7 @@
     </div>
     <button class="btn" id="btn-ready" disabled>Я готов</button>
     <div id="ready-count"></div>
+    <button class="btn ghost sm" id="btn-skip-reveal" hidden>Не ждать остальных — начать ночь</button>
   </div>
 </section>
 
@@ -140,6 +154,7 @@
       <span class="chip-hud gold" id="hud-role"></span>
       <button class="chip-hud" id="hud-code" title="Скопировать код"></button>
       <span class="chip-hud" id="hud-alive"></span>
+      <button class="chip-hud skip" id="btn-skip" hidden>⏭ Пропустить</button>
       <button class="chip-hud" id="btn-leave">Выйти</button>
       <div id="hud-sub"></div>
     </div>
@@ -205,6 +220,7 @@
 <script src="js/ui.js"></script>
 <script src="js/network.js"></script>
 <script src="js/game.js"></script>
+<script src="js/bots.js"></script>
 <script src="js/render.js"></script>
 <script src="js/app.js"></script>
 </body>
