@@ -51,10 +51,10 @@ function logLine(text) {
 
 // ================= ПОДКЛЮЧЕНИЕ ИГРОКОВ =================
 function hostJoin(peerId, name) {
+  if (H.players.some(q => q.conn === peerId)) return;
   name = cleanName(name);
   if (!name) return sendRaw(peerId, { t: 'join_error', msg: 'Пустое имя' });
   if (H.phase !== 'lobby') return sendRaw(peerId, { t: 'join_error', msg: 'Игра уже началась — дождитесь конца партии' });
-  if (H.players.some(q => q.conn === peerId)) return;
   if (H.players.length >= MAX_PLAYERS) return sendRaw(peerId, { t: 'join_error', msg: 'Комната заполнена (' + MAX_PLAYERS + ')' });
 
   const p = {

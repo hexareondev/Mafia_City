@@ -113,7 +113,7 @@ function fillSelect(el, pairs, val) {
 
 function renderLobby() {
   showScreen('scr-lobby');
-  $('#lob-code').textContent = code;
+  $('#lob-code').textContent = code || '····';
   $('#lob-count').textContent = view.players.length + ' / ' + MAX_PLAYERS + ' игроков';
   $('#lob-players').innerHTML = view.players.map(p =>
     '<div class="prow"><div class="av" style="--c:' + p.color + '">' + esc(p.name[0].toUpperCase()) + '</div>' +
@@ -129,9 +129,10 @@ function renderLobby() {
   fillSelect($('#set-vote'), VOTE_OPTIONS, s.vote);
   fillSelect($('#set-night'), NIGHT_OPTIONS, s.night);
   $('#btn-start').hidden = !host;
-  $('#btn-start').disabled = !view.canStart;
+  $('#btn-start').disabled = !view.canStart || netStatus !== 'online';
   const n = view.players.length;
   $('#lob-hint').textContent = !host ? 'Игру начнёт хост, когда все соберутся.'
+    : netStatus !== 'online' ? 'Дождитесь подключения к базе — кнопка станет активной.'
     : n < MIN_PLAYERS ? 'Нужно минимум ' + MIN_PLAYERS + ' игрока. Отправьте друзьям код или ссылку.'
     : n < 6 ? 'Можно начинать, но классическая партия — от 6 игроков.'
     : 'Город готов. Начинаем?';
@@ -218,7 +219,7 @@ function chipsHTML(list) {
 }
 
 function renderNight() {
-  const y = view.you, key = view.round + ':' + y.acted + ':' + y.donCheckDone + ':' + localDone;
+  const y = view.you, key = view.round + ':' + y.acted + ':' + y.donCheckDone + ':' + localDone + ':' + y.alive;
   if (nightKey === key) return;
   nightKey = key;
   const nz = $('#night-zone');
